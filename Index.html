@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Podložka">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#EEEAF4">
+<title>Podložka</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg:#EEEAF4; --card:#FFFFFF; --ink:#2A2438; --mute:#6F6883; --line:#D9D3E6;
+    --bad:#B3392B; --good:#2F8F5B; --btn:#2A2438; --btn-ink:#FFFFFF;
+    --l1:#8FB3E0; --l2:#A9B8D8; --l3:#D9B7A0; --l4:#EDA86E; --l5:#F2933F;
+    --off:#E3DEEE;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#1B1726; --card:#26213A; --ink:#F1EDF8; --mute:#A59DBA; --line:#3A3352;
+      --bad:#F0877A; --good:#6FD39B; --btn:#F1EDF8; --btn-ink:#1B1726; --off:#342E4B;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    max-width: 480px; margin: 0 auto; background: var(--bg);
+  }
+  h1 { font-size: 1.6rem; margin: 8px 0 2px; font-weight: 700; letter-spacing: -0.01em; }
+  .conn { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: .92rem; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mute); }
+  .dot.on { background: var(--good); }
+  .now { margin: 28px 0 6px; }
+  .temp { font-size: 4.2rem; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+  .temp small { font-size: 1.6rem; font-weight: 500; color: var(--mute); }
+  .line { font-size: 1.05rem; margin-top: 8px; min-height: 1.4em; }
+  .err { color: var(--bad); font-weight: 600; }
+
+  /* swipeable pane: page 1 = level selector, page 2 = animation */
+  .pane { display: flex; height: 150px; margin: 26px 0 6px; overflow-x: auto; scroll-snap-type: x mandatory;
+          scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+  .pane::-webkit-scrollbar { display: none; }
+  .slide { flex: 0 0 100%; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+  #viz { display: block; width: 100%; height: 100%; }
+  .dots { display: flex; justify-content: center; gap: 4px; margin: 0 0 6px; }
+  .dots button { width: 22px; height: 22px; border: 0; background: none; padding: 0; cursor: pointer; display: grid; place-items: center; }
+  .dots button::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background .2s, transform .2s; }
+  .dots button.on::before { background: var(--ink); transform: scale(1.25); }
+
+  .levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: end; margin: 0; height: 100%; }
+  .lv {
+    appearance: none; border: 0; border-radius: 14px; background: var(--off); color: var(--mute);
+    font: inherit; font-weight: 700; cursor: pointer; padding: 0 0 10px; display: flex; align-items: flex-end; justify-content: center;
+    transition: background .2s, color .2s;
+  }
+  .lv:nth-child(1){height:40%} .lv:nth-child(2){height:55%} .lv:nth-child(3){height:70%} .lv:nth-child(4){height:85%} .lv:nth-child(5){height:100%}
+  .lv[aria-pressed="true"] { color: #2A2438; }
+  .lv:nth-child(1)[aria-pressed="true"]{background:var(--l1)} .lv:nth-child(2)[aria-pressed="true"]{background:var(--l2)}
+  .lv:nth-child(3)[aria-pressed="true"]{background:var(--l3)} .lv:nth-child(4)[aria-pressed="true"]{background:var(--l4)}
+  .lv:nth-child(5)[aria-pressed="true"]{background:var(--l5)}
+  .lv:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--l4); outline-offset: 2px; }
+  .hint { color: var(--mute); font-size: .9rem; margin: 0 0 22px; }
+
+  .timer { display: flex; align-items: center; justify-content: space-between; background: var(--card); border-radius: 18px; padding: 10px 12px; }
+  .timer span { font-size: 1.15rem; font-weight: 600; }
+  .step { width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 1.5rem; cursor: pointer; }
+
+  .actions { display: grid; gap: 10px; margin-top: 18px; }
+  .go { background: var(--btn); color: var(--btn-ink); border: 0; border-radius: 18px; height: 58px; font: inherit; font-size: 1.1rem; font-weight: 700; cursor: pointer; }
+  .go:disabled { opacity: .35; cursor: default; }
+  .stop { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 18px; height: 52px; font: inherit; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .stop:disabled { opacity: .35; cursor: default; }
+
+  .login { background: var(--card); border-radius: 18px; padding: 18px; margin-top: 22px; display: none; }
+  .login label { display: block; font-size: .9rem; color: var(--mute); margin: 10px 0 4px; }
+  .login input { width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 1rem; padding: 0 12px; }
+  .link { background: none; border: 0; color: var(--mute); font: inherit; font-size: .88rem; text-decoration: underline; cursor: pointer; margin-top: 22px; padding: 6px 0; }
+  .login .go { width: 100%; margin-top: 16px; }
+  @media (prefers-reduced-motion: reduce) { .lv, .dots button::before { transition: none; } .pane { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+  <h1>Podložka</h1>
+  <div class="conn"><span class="dot" id="dot"></span><span id="connText">Připojuji…</span></div>
+
+  <section id="main">
+    <div class="now">
+      <div class="temp"><span id="temp">–</span><small> °C</small></div>
+      <div class="line" id="line"></div>
+    </div>
+
+    <div class="pane" id="pane">
+      <div class="slide"><div class="levels" id="levels" role="group" aria-label="Úroveň tepla"></div></div>
+      <div class="slide"><canvas id="viz" role="img" aria-label="Schéma podložky s hadicí a ohřívačem"></canvas></div>
+    </div>
+    <div class="dots">
+      <button id="d0" class="on" aria-label="Úroveň tepla"></button>
+      <button id="d1" aria-label="Schéma podložky"></button>
+    </div>
+    <p class="hint" id="hint">Teplota vody: 34 °C</p>
+
+    <div class="timer">
+      <button class="step" id="minus" aria-label="Méně hodin">−</button>
+      <span id="hours">2 h</span>
+      <button class="step" id="plus" aria-label="Více hodin">+</button>
+    </div>
+
+    <div class="actions">
+      <button class="go" id="start" disabled>Zapnout</button>
+      <button class="stop" id="stop" disabled>Vypnout</button>
+    </div>
+  </section>
+
+  <section class="login" id="login">
+    <b>Přihlášení k podložce</b>
+    <label for="u">Uživatel</label>
+    <input id="u" autocomplete="username" autocapitalize="none">
+    <label for="p">Heslo</label>
+    <input id="p" type="password" autocomplete="current-password">
+    <button class="go" id="save">Uložit a připojit</button>
+  </section>
+
+  <button class="link" id="reset">Změnit přihlášení</button>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+const URL_WSS = "wss://q71fc414.ala.eu-central-1.emqxsl.com:8084/mqtt";  // ověř v konzoli EMQX (WebSocket TLS)
+const TARGETS = [0, 30, 32, 34, 36, 38];
+const FAULTS = { prehrati: "Přehřátí, podložka se vypnula", cidlo: "Vypadlo čidlo teploty, podložka se vypnula",
+                 hladina: "Málo vody v nádrži", neohrev: "Ohřívač nehřeje, podložka se vypnula" };
+
+// ============ NASTAVENÍ ANIMACE – všechny hodnoty na jednom místě ============
+const VIZ = {
+  // data z MQTT (názvy polí v deka/status)
+  fieldIn:  "tempIn",        // čidlo: voda jde z ohřívače do podložky
+  fieldOut: "tempOut",       // čidlo: voda se vrací z podložky do ohřívače
+
+  // barvy a teploty
+  roomTemp: 22,              // °C – tady je barva 0 % (první barva)
+  goalOffset: -1,            // -1 = 100 % barva už při (cíl − 1) °C
+  colors: ["#8FB3E0", "#9B7FD6", "#F2933F"],   // světle modrá → fialová → oranžová
+
+  // tvar
+  rows: 6,                   // počet meandrů (řad); sudé číslo, liché se zaokrouhlí nahoru
+  tubeWidth: 9,              // tloušťka hadice v px (omezí se podle rozestupu řad)
+  mattressPad: 14,           // okraj mezi podložkou a hadicí v px
+  mattressRadius: 18,        // zaoblení podložky
+  mattressFillAlpha: 0.07,   // průhlednost výplně podložky
+  mattressEdgeAlpha: 0.5,    // průhlednost okraje podložky
+  heaterWidthFrac: 0.17,     // šířka ohřívače jako podíl šířky karty
+  heaterGap: 14,             // mezera mezi podložkou a ohřívačem v px
+  heaterShape: "cut",        // "cut" = seříznutý roh, "round" = zaoblený
+  heaterCut: 14,             // velikost seříznutí / zaoblení v px
+
+  // vypnuto: prázdná hadice
+  offEdgeAlpha: 0.5,         // průhlednost obrysu prázdné hadice
+  offWall: 1.6,              // tloušťka stěny prázdné hadice v px
+
+  // částice
+  particles: {
+    rate: 5,                 // kolik částic za sekundu vypustí ohřívač
+    max: 260,                // pojistka: nejvíc částic najednou
+    size: [0.7, 1.9],        // poloměr v px (min, max)
+    speed: [35, 85],         // rychlost v px/s (min, max)
+    alpha: [0.15, 0.65],     // průhlednost (min, max)
+    spread: 0.7,             // jak široko v hadici se pohybují (0 = střed, 1 = celá šířka)
+    fade: 30,                // délka vyblednutí na začátku a konci v px
+    color: "255,255,255"     // RGB
+  },
+
+  fps: 30,                   // strop snímků za sekundu
+  respectReducedMotion: true,// při „omezit pohyb“ v systému bez částic
+  sampleStep: 3              // jemnost vzorkování hadice v px
+};
+// ============================================================================
+
+const $ = id => document.getElementById(id);
+const sel = { level: 3, hours: 2 };
+let online = false, status = null, client = null, touched = false;
+
+// --- ovládací prvky
+const levels = $("levels");
+for (let i = 1; i <= 5; i++) {
+  const b = document.createElement("button");
+  b.className = "lv"; b.textContent = i; b.setAttribute("aria-label", "Úroveň " + i);
+  b.onclick = () => { sel.level = i; touched = true; render(); };
+  levels.appendChild(b);
+}
+$("minus").onclick = () => { sel.hours = Math.max(1, sel.hours - 1); touched = true; render(); };
+$("plus").onclick  = () => { sel.hours = Math.min(12, sel.hours + 1); touched = true; render(); };
+$("start").onclick = () => send({ level: sel.level, hours: sel.hours });
+$("stop").onclick  = () => send({ stop: true });
+
+function send(obj) {
+  if (client && client.connected) client.publish("deka/cmd", JSON.stringify(obj), { qos: 1 });
+}
+
+function render() {
+  [...levels.children].forEach((b, i) => b.setAttribute("aria-pressed", String(i + 1 === sel.level)));
+  $("hint").textContent = "Teplota vody: " + TARGETS[sel.level] + " °C";
+  $("hours").textContent = sel.hours + " h";
+  $("dot").className = "dot" + (online ? " on" : "");
+  $("start").disabled = !online;
+  $("stop").disabled = !online;
+
+  const s = status;
+  $("temp").textContent = s && s.tempIn != null ? Number(s.tempIn).toFixed(1) : "–";
+  const line = $("line"); line.className = "line";
+  if (!online) line.textContent = "Podložka není připojená.";
+  else if (s && s.fault) { line.className = "line err"; line.textContent = FAULTS[s.fault] || ("Chyba: " + s.fault); }
+  else if (s && s.running) {
+    const h = Math.floor(s.minLeft / 60), m = s.minLeft % 60;
+    line.textContent = "Hřeje na úroveň " + s.level + ", zbývá " + (h ? h + " h " : "") + m + " min";
+  } else line.textContent = "Vypnuto";
+  vizSync();
+}
+
+// --- swipe karta (stránky + tečky)
+const pane = $("pane"), dots = [$("d0"), $("d1")];
+pane.addEventListener("scroll", () => {
+  const i = Math.round(pane.scrollLeft / Math.max(1, pane.clientWidth));
+  dots.forEach((d, k) => d.classList.toggle("on", k === i));
+}, { passive: true });
+dots.forEach((d, k) => d.onclick = () => pane.scrollTo({ left: k * pane.clientWidth, behavior: "smooth" }));
+
+// --- animace podložky
+const cv = $("viz"), cx = cv.getContext("2d");
+const layer = document.createElement("canvas"), lg = layer.getContext("2d");
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const STOPS = VIZ.colors.map(hex2rgb);
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+let W = 0, H = 0, dpr = 1, G = null;      // G = geometrie
+let on = false, Tin = 0, Tout = 0, goal = 30;
+let key = "", dirty = true, vis = false, raf = 0, last = 0, acc = 0, parts = [];
+
+function mix(u) {                          // u 0..1 → barva z přechodu
+  const n = STOPS.length - 1, x = clamp(u, 0, 1) * n, i = Math.min(n - 1, Math.floor(x)), f = x - i;
+  const a = STOPS[i], b = STOPS[i + 1];
+  return "rgb(" + a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(",") + ")";
+}
+const colorFor = T => mix((T - VIZ.roomTemp) / Math.max(0.1, goal + VIZ.goalOffset - VIZ.roomTemp));
+
+function rr(g, x, y, w, h, r) {            // zaoblený obdélník
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function heaterPath(g, x, y, w, h) {
+  if (VIZ.heaterShape === "round") return rr(g, x, y, w, h, VIZ.heaterCut);
+  const c = VIZ.heaterCut;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x + w - c, y); g.lineTo(x + w, y + c); g.lineTo(x + w, y + h); g.lineTo(x, y + h); g.closePath();
+}
+function roundPoly(v) {                    // uzavřená lomená čára se zaoblenými rohy → husté body
+  const out = [], n = v.length;
+  for (let i = 0; i < n; i++) {
+    const a = v[(i - 1 + n) % n], b = v[i], c = v[(i + 1) % n];
+    const d1 = Math.hypot(b[0] - a[0], b[1] - a[1]), d2 = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    const k = Math.min(b[2], d1 / 2, d2 / 2);
+    const p = [b[0] + (a[0] - b[0]) * k / d1, b[1] + (a[1] - b[1]) * k / d1];
+    const q = [b[0] + (c[0] - b[0]) * k / d2, b[1] + (c[1] - b[1]) * k / d2];
+    for (let t = 0; t <= 8; t++) { const u = t / 8, w = 1 - u;
+      out.push([w * w * p[0] + 2 * w * u * b[0] + u * u * q[0], w * w * p[1] + 2 * w * u * b[1] + u * u * q[1]]); }
+  }
+  return out;
+}
+function resample(p, step) {               // rovnoměrné vzorkování po délce
+  const out = [p[0]]; let rem = step;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let pos = 0;
+    while (d - pos >= rem) { pos += rem; const t = pos / d; out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); rem = step; }
+    rem -= d - pos;
+  }
+  return out;
+}
+
+function build() {
+  const rows = Math.max(2, Math.ceil(VIZ.rows / 2) * 2), pad = VIZ.mattressPad;
+  const hw = W * VIZ.heaterWidthFrac, hx = W - hw - 3, m = { x: 3, y: 3, h: H - 6 };
+  m.w = hx - VIZ.heaterGap - m.x;
+  const xL = m.x + pad, xR = m.x + m.w - pad, y0 = m.y + pad, yL = m.y + m.h - pad;
+  const gap = (yL - y0) / (rows - 1), BIG = 1e9, cxh = hx + hw * 0.6;
+  const v = [[hx, y0, 0]];
+  for (let i = 0; i < rows; i++) {
+    const y = y0 + i * gap, l2r = i % 2 === 1;
+    v.push([l2r ? xL : xR, y, BIG], [l2r ? xR : xL, y, BIG]);
+  }
+  v.push([hx, yL, 0], [cxh, yL, 9], [cxh, y0, 9]);
+  const P = resample(roundPoly(v), VIZ.sampleStep), N = P.length;
+  let iM = 0, best = 1e9;                  // konec podložky = bod nejblíž vstupu do ohřívače
+  P.forEach((p, i) => { const d = Math.hypot(p[0] - hx, p[1] - yL); if (d < best) { best = d; iM = i; } });
+  const nx = new Float32Array(N), ny = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = P[(i - 1 + N) % N], b = P[(i + 1) % N], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1;
+    nx[i] = -dy / d; ny[i] = dx / d;
+  }
+  G = { P, N, iM, nx, ny, m, hx, hw, tw: Math.min(VIZ.tubeWidth, gap * 0.85),
+        step: VIZ.sampleStep, L: (N - 1) * VIZ.sampleStep };
+}
+
+function paint() {
+  const g = lg, { P, N, iM, m, hx, hw, tw } = G, ink = css("--ink"), mute = css("--mute");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  g.lineCap = g.lineJoin = "round";
+  rr(g, m.x, m.y, m.w, m.h, VIZ.mattressRadius);                        // podložka
+  g.globalAlpha = VIZ.mattressFillAlpha; g.fillStyle = ink; g.fill();
+  g.globalAlpha = VIZ.mattressEdgeAlpha; g.strokeStyle = mute; g.lineWidth = 1.5; g.stroke();
+  heaterPath(g, hx, m.y, hw, m.h);                                      // ohřívač
+  g.globalAlpha = VIZ.mattressFillAlpha; g.fillStyle = ink; g.fill();
+  if (on) { g.globalAlpha = 0.18; g.fillStyle = colorFor(Tin); g.fill(); }
+  g.globalAlpha = VIZ.mattressEdgeAlpha; g.strokeStyle = mute; g.stroke();
+  const all = () => { g.beginPath(); g.moveTo(P[0][0], P[0][1]); for (let i = 1; i < N; i++) g.lineTo(P[i][0], P[i][1]); g.closePath(); g.stroke(); };
+  if (!on) {                                                            // prázdná hadice
+    g.globalAlpha = VIZ.offEdgeAlpha; g.strokeStyle = mute; g.lineWidth = tw; all();
+    g.globalAlpha = 1; g.strokeStyle = css("--card"); g.lineWidth = Math.max(1, tw - 2 * VIZ.offWall); all();
+  } else {                                                              // hadice s přechodem
+    g.globalAlpha = 0.15; g.strokeStyle = ink; g.lineWidth = tw + 2; all();
+    g.globalAlpha = 1; g.lineWidth = tw;
+    for (let i = 0; i < N; i++) {
+      const T = i <= iM ? Tin + (Tout - Tin) * i / iM : Tout + (Tin - Tout) * (i - iM) / (N - iM);
+      g.strokeStyle = colorFor(T); g.beginPath();
+      g.moveTo(P[i][0], P[i][1]); g.lineTo(P[(i + 1) % N][0], P[(i + 1) % N][1]); g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
+}
+
+function resize() {
+  W = pane.clientWidth; H = pane.clientHeight;
+  if (W < 50 || H < 50) return;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = layer.width = Math.round(W * dpr); cv.height = layer.height = Math.round(H * dpr);
+  build(); parts = []; dirty = true; kick();
+}
+
+function vizSync() {
+  const s = status;
+  on = !!(online && s && s.running && !s.fault);
+  const a = s && s[VIZ.fieldIn] != null ? Number(s[VIZ.fieldIn]) : null;
+  const b = s && s[VIZ.fieldOut] != null ? Number(s[VIZ.fieldOut]) : null;
+  Tin = a ?? b ?? VIZ.roomTemp; Tout = b ?? a ?? VIZ.roomTemp;
+  goal = TARGETS[(s && s.running ? s.level : sel.level)] || 30;
+  const k = [on, Tin.toFixed(1), Tout.toFixed(1), goal, css("--ink")].join("|");
+  if (k !== key) { key = k; dirty = true; }
+  if (!on) parts = [];
+  kick();
+}
+
+function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+function frame(t) {
+  raf = 0;
+  if (!G || !vis || document.hidden) return;
+  if (t - last < 1000 / VIZ.fps - 2) { kick(); return; }
+  const dt = Math.min(0.1, (t - last) / 1000); last = t;
+  if (dirty) { paint(); dirty = false; }
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H); cx.drawImage(layer, 0, 0, W, H);
+  if (!on || (VIZ.respectReducedMotion && reduce.matches)) return;      // vypnuto → žádné částice, smyčka stojí
+  const q = VIZ.particles, { P, N, nx, ny, step, L, tw } = G;
+  acc += q.rate * dt;
+  while (acc >= 1) { acc--; if (parts.length < q.max)
+    parts.push({ s: 0, v: rnd(...q.speed), r: rnd(...q.size), a: rnd(...q.alpha), o: rnd(-1, 1) * q.spread * tw / 2 }); }
+  parts = parts.filter(p => (p.s += p.v * dt) < L);
+  for (const p of parts) {
+    const i = Math.min(N - 2, Math.floor(p.s / step)), f = p.s / step - i;
+    const x = P[i][0] + (P[i + 1][0] - P[i][0]) * f + nx[i] * p.o, y = P[i][1] + (P[i + 1][1] - P[i][1]) * f + ny[i] * p.o;
+    cx.globalAlpha = p.a * Math.min(1, p.s / q.fade, (L - p.s) / q.fade);
+    cx.fillStyle = "rgb(" + q.color + ")"; cx.beginPath(); cx.arc(x, y, p.r, 0, 6.2832); cx.fill();
+  }
+  cx.globalAlpha = 1; kick();
+}
+
+new ResizeObserver(resize).observe(pane);
+new IntersectionObserver(e => { vis = e[0].isIntersecting; if (vis) kick(); }, { threshold: 0.3 }).observe(cv);
+document.addEventListener("visibilitychange", kick);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { key = ""; vizSync(); });
+
+// --- připojení
+function connect(user, pass) {
+  if (client) client.end(true);
+  $("connText").textContent = "Připojuji…";
+  client = mqtt.connect(URL_WSS, { username: user, password: pass, keepalive: 30, reconnectPeriod: 3000,
+                                   clientId: "deka-web-" + Math.random().toString(16).slice(2, 8) });
+  client.on("connect", () => { $("connText").textContent = "Připojeno";
+                               client.subscribe(["deka/status", "deka/online"]); });
+  client.on("close", () => { $("connText").textContent = "Bez spojení, zkouším znovu…"; online = false; render(); });
+  client.on("error", e => { $("connText").textContent = "Chyba: " + (e && e.message ? e.message : "připojení"); });
+  client.on("message", (topic, msg) => {
+    const t = msg.toString();
+    if (topic === "deka/online") online = (t === "online");
+    if (topic === "deka/status") {
+      try { status = JSON.parse(t); } catch (e) { return; }
+      if (!touched && status.running) { sel.level = status.level; }
+    }
+    render();
+  });
+}
+
+function showLogin(show) {
+  $("login").style.display = show ? "block" : "none";
+  $("main").style.display = show ? "none" : "block";
+}
+$("save").onclick = () => {
+  const u = $("u").value.trim(), p = $("p").value;
+  if (!u || !p) return;
+  try { localStorage.setItem("deka_u", u); localStorage.setItem("deka_p", p); } catch (e) {}
+  showLogin(false); connect(u, p);
+};
+$("reset").onclick = () => {
+  try { localStorage.removeItem("deka_u"); localStorage.removeItem("deka_p"); } catch (e) {}
+  if (client) client.end(true);
+  online = false; status = null; showLogin(true); render();
+};
+
+let u = null, p = null;
+try { u = localStorage.getItem("deka_u"); p = localStorage.getItem("deka_p"); } catch (e) {}
+render();
+if (u && p) { showLogin(false); connect(u, p); } else { showLogin(true); $("connText").textContent = "Nepřihlášeno"; }
+</script>
+</body>
+</html>
