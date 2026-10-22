@@ -1,7 +1,7 @@
 {
   "name": "Nook Podložka",
   "short_name": "Nook",
-  "start_url": "./index.html",
+  "start_url": "./Index.html",
   "display": "standalone",
   "background_color": "#1B1726",
   "theme_color": "#1B1726",
