@@ -1,21 +1,17 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('Service Worker registered', reg))
-      .catch(err => console.error('Service Worker failed', err));
-  }
-</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Podložka">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nook">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#EEEAF4">
-<title>Podložka</title>
+<meta name="theme-color" content="#EEEAF4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1726" media="(prefers-color-scheme: dark)">
+<title>Nook</title>
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root {
@@ -124,7 +120,7 @@
   </section>
 
   <section class="login" id="login">
-    <b>Přihlášení k podložce</b>
+    <b>Přihlášení</b>
     <label for="u">Uživatel</label>
     <input id="u" autocomplete="username" autocapitalize="none">
     <label for="p">Heslo</label>
@@ -140,6 +136,12 @@ const URL_WSS = "wss://q71fc414.ala.eu-central-1.emqxsl.com:8084/mqtt";  // ově
 const TARGETS = [0, 30, 32, 34, 36, 38];
 const FAULTS = { prehrati: "Přehřátí, podložka se vypnula", cidlo: "Vypadlo čidlo teploty, podložka se vypnula",
                  hladina: "Málo vody v nádrži", neohrev: "Ohřívač nehřeje, podložka se vypnula" };
+
+// ============ PŘIHLÁŠENÍ ============
+const LOGIN = {
+  days: 90,        // po kolika dnech se má zadat heslo znovu (30 = měsíc, 90 = 3 měsíce)
+  sliding: true    // true = lhůta se prodlouží při každém úspěšném připojení (heslo bude třeba jen když aplikaci dlouho nepoužiješ)
+};
 
 // ============ NASTAVENÍ ANIMACE – všechny hodnoty na jednom místě ============
 const VIZ = {
@@ -202,6 +204,24 @@ $("minus").onclick = () => { sel.hours = Math.max(1, sel.hours - 1); touched = t
 $("plus").onclick  = () => { sel.hours = Math.min(12, sel.hours + 1); touched = true; render(); };
 $("start").onclick = () => send({ level: sel.level, hours: sel.hours });
 $("stop").onclick  = () => send({ stop: true });
+
+// --- uložené přihlášení s platností
+function saveLogin(u, p) {
+  try { localStorage.setItem("deka_u", u); localStorage.setItem("deka_p", p); localStorage.setItem("deka_t", String(Date.now())); } catch (e) {}
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // chrání před automatickým mazáním
+}
+function clearLogin() { try { ["deka_u", "deka_p", "deka_t"].forEach(k => localStorage.removeItem(k)); } catch (e) {} }
+function loadLogin() {
+  try {
+    const u = localStorage.getItem("deka_u"), p = localStorage.getItem("deka_p");
+    if (!u || !p) return null;
+    let t = Number(localStorage.getItem("deka_t")) || 0;
+    if (!t) { t = Date.now(); localStorage.setItem("deka_t", String(t)); }          // starší uložené přihlášení bez data
+    if (Date.now() - t > LOGIN.days * 864e5) { clearLogin(); return "expired"; }
+    return { u, p };
+  } catch (e) { return null; }
+}
+function touchLogin() { if (LOGIN.sliding) try { localStorage.setItem("deka_t", String(Date.now())); } catch (e) {} }
 
 function send(obj) {
   if (client && client.connected) client.publish("deka/cmd", JSON.stringify(obj), { qos: 1 });
@@ -394,10 +414,17 @@ function connect(user, pass) {
   $("connText").textContent = "Připojuji…";
   client = mqtt.connect(URL_WSS, { username: user, password: pass, keepalive: 30, reconnectPeriod: 3000,
                                    clientId: "deka-web-" + Math.random().toString(16).slice(2, 8) });
-  client.on("connect", () => { $("connText").textContent = "Připojeno";
+  client.on("connect", () => { $("connText").textContent = "Připojeno"; touchLogin();
                                client.subscribe(["deka/status", "deka/online"]); });
   client.on("close", () => { $("connText").textContent = "Bez spojení, zkouším znovu…"; online = false; render(); });
-  client.on("error", e => { $("connText").textContent = "Chyba: " + (e && e.message ? e.message : "připojení"); });
+  client.on("error", e => {
+    const msg = (e && e.message) || "";
+    if (/not authorized|bad user|password|username/i.test(msg)) {         // špatné údaje → smazat a zeptat se znovu
+      client.end(true); clearLogin(); online = false; status = null; showLogin(true);
+      $("connText").textContent = "Špatné jméno nebo heslo"; render(); return;
+    }
+    $("connText").textContent = "Chyba: " + (msg || "připojení");
+  });
   client.on("message", (topic, msg) => {
     const t = msg.toString();
     if (topic === "deka/online") online = (t === "online");
@@ -416,19 +443,24 @@ function showLogin(show) {
 $("save").onclick = () => {
   const u = $("u").value.trim(), p = $("p").value;
   if (!u || !p) return;
-  try { localStorage.setItem("deka_u", u); localStorage.setItem("deka_p", p); } catch (e) {}
+  saveLogin(u, p);
   showLogin(false); connect(u, p);
 };
 $("reset").onclick = () => {
-  try { localStorage.removeItem("deka_u"); localStorage.removeItem("deka_p"); } catch (e) {}
+  clearLogin();
   if (client) client.end(true);
   online = false; status = null; showLogin(true); render();
 };
 
-let u = null, p = null;
-try { u = localStorage.getItem("deka_u"); p = localStorage.getItem("deka_p"); } catch (e) {}
+document.addEventListener("visibilitychange", () => {                   // po návratu do aplikace hned znovu připojit
+  if (!document.hidden && client && !client.connected) client.reconnect();
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(err => console.error("Service Worker failed", err));
+
+const saved = loadLogin();
 render();
-if (u && p) { showLogin(false); connect(u, p); } else { showLogin(true); $("connText").textContent = "Nepřihlášeno"; }
+if (saved && saved !== "expired") { showLogin(false); connect(saved.u, saved.p); }
+else { showLogin(true); $("connText").textContent = saved === "expired" ? "Přihlášení vypršelo, přihlas se znovu" : "Nepřihlášeno"; }
 </script>
 </body>
 </html>
