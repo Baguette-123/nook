@@ -150,13 +150,13 @@ const VIZ = {
   fieldOut: "tempOut",       // čidlo: voda se vrací z podložky do ohřívače
 
   // barvy a teploty
-  roomTemp: 22,              // °C – tady je barva 0 % (první barva)
-  goalOffset: -1,            // -1 = 100 % barva už při (cíl − 1) °C
+  roomTemp: 37,              // °C – tady je barva 0 % (první barva)
+  goalOffset: 0,            // -1 = 100 % barva už při (cíl − 1) °C
   colors: ["#8FB3E0", "#9B7FD6", "#F2933F"],   // světle modrá → fialová → oranžová
 
   // tvar
   rows: 6,                   // počet meandrů (řad); sudé číslo, liché se zaokrouhlí nahoru
-  tubeWidth: 9,              // tloušťka hadice v px (omezí se podle rozestupu řad)
+  tubeWidth: 10,              // tloušťka hadice v px (omezí se podle rozestupu řad) (10)
   mattressPad: 14,           // okraj mezi podložkou a hadicí v px
   mattressRadius: 18,        // zaoblení podložky
   mattressFillAlpha: 0.07,   // průhlednost výplně podložky
@@ -164,7 +164,7 @@ const VIZ = {
   heaterWidthFrac: 0.17,     // šířka ohřívače jako podíl šířky karty
   heaterGap: 14,             // mezera mezi podložkou a ohřívačem v px
   heaterShape: "cut",        // "cut" = seříznutý roh, "round" = zaoblený
-  heaterCut: 14,             // velikost seříznutí / zaoblení v px
+  heaterCut: 16,             // velikost seříznutí / zaoblení v px (14)
 
   // vypnuto: prázdná hadice
   offEdgeAlpha: 0.5,         // průhlednost obrysu prázdné hadice
